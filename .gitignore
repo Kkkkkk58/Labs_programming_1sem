@@ -1,0 +1,3 @@
+# Ignoring compiled code and executables
+*.o
+*.exe
