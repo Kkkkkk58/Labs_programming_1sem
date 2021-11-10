@@ -2,7 +2,6 @@
 #include <string.h>
 #include <time.h>
 #define MAXLEN 400
-#define NOT_5XX_ERR "0"
 
 int get_request(char line[], FILE *requests_list);
 
@@ -38,6 +37,10 @@ int get_request(char line[], FILE *requests_list) {
     int first_quot = -1;
     int second_quot = -1;
     int i = 0;
+    /*while (line[i] != '[') {
+        ++i;
+    }
+    */
     while (second_quot == -1) {
         if (line[i] == '"')  {
             if (first_quot == -1) {
