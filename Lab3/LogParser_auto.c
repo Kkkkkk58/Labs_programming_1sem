@@ -4,8 +4,6 @@
 #include <stdlib.h>
 #define MAXLEN 400
 
-int counter = 0;
-
 enum Months {
     JANUARY,
     FEBRUARY,
@@ -21,16 +19,8 @@ enum Months {
     DECEMBER
 };
 
-/*
-struct Node {
-    time_t time;
-    struct Node *next;
-};
 
-struct Node *list_head, *link_to_prev;
-*/
-long long index = 0;
-int get_request(char line[], FILE *requests_list, struct tm **time_window);
+int get_request(char line[], FILE *requests_list);
 int get_month(char month_name[]);
 struct tm get_time(char time[]);
 
@@ -48,10 +38,10 @@ int main(int argc, char argv[]) {
 
     char line[MAXLEN];
     int counter = 0;
-    struct tm *time_window = (struct tm *)malloc(100000000 * sizeof(struct tm));
+    struct tm *time_window = (struct tm *)malloc(100 * sizeof(struct tm));
     while (fgets(line, MAXLEN, input_log)) {
 
-        counter += get_request(line, requests_list, &time_window);
+        counter += get_request(line, requests_list);
 
     }
     fprintf(requests_list, "\nThe number of 5xx errors: %d", counter);
@@ -64,18 +54,18 @@ int main(int argc, char argv[]) {
 }
 
 
-int get_request(char line[], FILE *requests_list, struct tm **time_window) {
+int get_request(char line[], FILE *requests_list) {
     int is_5xx_err = 0;
-    char *save_line_pos;
-    strtok_r(line, "[", &save_line_pos);
-    char *time = strtok_r(NULL, "]", &save_line_pos);
+    char *line_pos = strchr(line, '[');
+    if (line_pos == NULL) {
+        return is_5xx_err;
+    }
+    char *time = strtok_r(line_pos, "]", &line_pos);
     struct tm time_of_request = get_time(time);
-    time_t required = mktime(&time_of_request);
-    time_window[index] = required;
-    //stop
-    strtok_r(NULL, "\"", &save_line_pos);
-    char *request = strtok_r(NULL, "\"", &save_line_pos);
-    int i = save_line_pos + 1 - line;
+
+    line_pos = strchr(line_pos, '"');
+    char *request = strtok_r(line_pos, "\"", &line_pos);
+    int i = line_pos + 1 - line;
     if (line[i] == '5') {
         fprintf(requests_list, "%s\n", request);
         is_5xx_err = 1;
@@ -86,18 +76,18 @@ int get_request(char line[], FILE *requests_list, struct tm **time_window) {
 
 struct tm get_time(char time[]) {
     struct tm time_of_request;
-    char *save_time_pos;
-    char *day = strtok_r(time, "/", &save_time_pos);
+    char *time_pos;
+    char *day = strtok_r(time, "/", &time_pos);
     time_of_request.tm_mday = atoi(day);
-    char *month = strtok_r(NULL, "/", &save_time_pos);
+    char *month = strtok_r(NULL, "/", &time_pos);
     time_of_request.tm_mon = get_month(month);
-    char *year = strtok_r(NULL, ":", &save_time_pos);
+    char *year = strtok_r(NULL, ":", &time_pos);
     time_of_request.tm_year = atoi(year) - 1900;
-    char *hour = strtok_r(NULL, ":", &save_time_pos);
+    char *hour = strtok_r(NULL, ":", &time_pos);
     time_of_request.tm_hour = atoi(hour);
-    char *minutes = strtok_r(NULL, ":", &save_time_pos);
+    char *minutes = strtok_r(NULL, ":", &time_pos);
     time_of_request.tm_min = atoi(minutes);
-    char *seconds = strtok_r(NULL, " ", &save_time_pos);
+    char *seconds = strtok_r(NULL, " ", &time_pos);
     time_of_request.tm_sec = atoi(seconds);
     return time_of_request;
 }
