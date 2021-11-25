@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <io.h>
+#include <windows.h>
+#include <mmsystem.h>
 
 
 typedef union ID3v2_header {
@@ -22,14 +24,28 @@ void get_tags(FILE *song, char *tag, long header_size, char version);
 void set_tags(FILE *song, char *tag, char *new_value, long header_size, ID3v2_header *header);
 char *get_argument(char *argument);
 void info(char frame_name, char *frame_value, long frame_size);
+void out_image(char *frame_value, long frame_size);
+void get_info(char *frame_name, char *frame_value, long frame_size);
 
 int main(int argc, char *argv[]) {
+    if (argc < 3) {
+        printf("Unsupported input format! Try again!");
+        return 1;
+    }
     char *filepath = get_argument(argv[1]);
     FILE *song = fopen(filepath, "rb");
+    if (song == NULL) {
+        printf("Some errors while reading the file. Try again!");
+        return 1;
+    }
     ID3v2_header header;
     fread(&header, sizeof(char), 10, song);
+    int ext_header_exists = 0;
+    int footer_exists = 0;
     if (header.fields.flags != 0) {
-        ;
+        if (header.fields.flags & (char) 0x80 == (char) 0x80) {
+            ext_header_exists = 1;
+        }
     }
     long header_size = 0;
     long multiplier = 128 * 128 * 128;
@@ -37,22 +53,70 @@ int main(int argc, char *argv[]) {
         header_size += header.fields.size_arr[i] * multiplier;
         multiplier /= 128;
     }
-    if (strcmp(argv[2], "--show") == 0) {
+    header.fields.flags = '\0';
+    int start_position = 10;
+    if (ext_header_exists) {
+        long ext_header_size = 0;
+        int degree = 128;
+        if (header.fields.version == 3) {
+            degree = 256;
+            start_position += 4;
+        }
+        long multiplier = degree * degree * degree;
+        unsigned char ext_size_arr[4];
+        fread(ext_size_arr, 4, sizeof(char), song);
+        for (int i = 0; i < 4; ++i) {
+            ext_header_size += ext_size_arr[i] * multiplier;
+            multiplier /= degree;
+        }
+        start_position += 6 + ext_header_size;
+    }
+    int show_enabled = 0;
+    int get_enabled = 0;
+    int set_enabled = 0;
+    char *frame_to_get;
+    char *frame_to_set;
+    char *value_to_set;
+    for (int arg_index = 2; arg_index < argc; ++arg_index) {
+        if (strcmp(argv[arg_index], "--show") == 0) {
+            show_enabled = 1;
+        }
+        else if (argv[arg_index][2] == 'g') {
+            frame_to_get = get_argument(argv[arg_index]);
+            get_enabled = 1;
+        }
+        else {
+            frame_to_set = get_argument(argv[arg_index]);
+            if (argc > arg_index + 1) {
+                ++arg_index;
+                value_to_set = get_argument(argv[arg_index]);
+                set_enabled = 1;
+            }
+            else {
+                printf("Unsupported input format! Try again!");
+                return 1;
+            }
+        }
+    }
+    if (show_enabled) {
+        fseek(song, start_position, SEEK_SET);
         show_tags(song, header_size, header.fields.version);
     }
-    else if (argv[2][2] == 's') {
-        char *frame_name = get_argument(argv[2]);
-        char *new_value = get_argument(argv[3]);
-        set_tags(song, frame_name, new_value, header_size, &header);
+    if (get_enabled) {
+        fseek(song, start_position, SEEK_SET);
+        get_tags(song, frame_to_get, header_size, header.fields.version);
+    }
+    if (set_enabled) {
+        fseek(song, start_position, SEEK_SET);
+        set_tags(song, frame_to_set, value_to_set, header_size, &header);
         fclose(song);
+        song = NULL;
         remove(filepath);
         rename("temp.mp3", filepath);
     }
-    else {
-        char *frame_name = get_argument(argv[2]);
-        get_tags(song, frame_name, header_size, header.fields.version);
+    if (song != NULL) {
+        fclose(song);
     }
-    fclose(song);
     return 0;
 }
 
@@ -64,20 +128,21 @@ char *get_argument(char *argument) {
 
 
 void show_tags(FILE *song, long header_size, char version) {
-    fseek(song, 10, SEEK_SET);
     int degree = 128;
     if (version == 3) {
         degree = 256;
     }
-    int i = 1;
+    int i = 0;
     while (i < header_size) {
+        printf("%d %d", i, header_size);
         char frame_name[5];   
         fread(frame_name, sizeof(char), 4, song);
         if (frame_name[0] == 0) {
             return;
         }
         frame_name[4] = '\0';
-        printf("%s ", frame_name);
+        printf("%s\n", frame_name);
+        /* ЕБАНИ СТРУКТУРУ */
         unsigned char size_arr[4];
         fread(size_arr, sizeof(char), 4, song);
         long multiplier = degree * degree * degree;
@@ -86,70 +151,20 @@ void show_tags(FILE *song, long header_size, char version) {
             frame_size += size_arr[i] * multiplier;
             multiplier /= degree;
         }
-        
         char flags[2];
         fread(flags, sizeof(char), 2, song);
-        i += 10;
         char *frame_value =(char *)malloc(frame_size * sizeof(char));
         fread(frame_value, sizeof(char), frame_size, song);
-        if (strcmp("APIC", frame_name) == 0) {
-            char buff_name[] = "tmp_image.xxxx";
-            int j = 0;
-            while (j < 4) {
-                buff_name[10 + j] = frame_value[7 + j];
-                ++j;
-            }
-            j += 7;
-            if (frame_value[j] == '\0') {
-                j += 3;
-            }
-            else {
-                j += 2;
-            }
-            if (buff_name[10] == 'j') {
-                while (frame_value[j] != (char) 0xff && frame_value[j + 1] != (char) 0xd8) {
-                    ++j;
-                }
-            }
-            else {
-                while (frame_value[j] != (char) 0x89 && frame_value[j + 1] != (char) 0x50 
-                && frame_value[j + 2] != (char) 0x4e && frame_value[j + 3] != (char) 0x47) {
-                    ++j;
-                }
-            }
-            FILE *image = fopen(buff_name, "wb");
-            printf("Your picture was saved in %s file", buff_name);
-            while (j < frame_size) {
-                fputc(frame_value[j], image);
-                ++j;
-            }
-            fflush(image);
-            fclose(image);
-        }
-        else {
-            int pos = 0;
-            while(frame_value[pos] == '\0') {
-                ++pos;
-            }
-            if (frame_value[pos] == (char)0x1 && frame_value[pos + 1] == (char)0xff && frame_value[pos + 2] == (char)0xfe) {
-                pos += 3;
-            }
-            while (pos < frame_size) {
-                printf("%c", frame_value[pos]);
-                ++pos;
-            }
-        }
+        // get_info(frame_name, frame_value, frame_size);
         free(frame_value);
         frame_value = NULL;
-        printf("\n");
-        i += frame_size;
+        i += 10 + frame_size;
     }
 }
 
 
 void get_tags(FILE *song, char *tag, long header_size, char version) {
-    fseek(song, 10, SEEK_SET);
-    int i = 1;
+    int i = 0;
     int found = 0;
     short degree = 128;
     if (version == 3) {
@@ -205,7 +220,10 @@ void set_tags(FILE *song, char *tag, char *new_value, long header_size, ID3v2_he
     int found = 0;
     int i = 0;
     short degree = 128;
-    int curr_size = strlen(new_value) + 1;
+    int curr_size = strlen(new_value);
+    if (tag[0] == 'T') {
+        ++curr_size;
+    }
     int prev_size = 0;
     FILE *new_file = fopen("temp.mp3", "wb");
     int old_header_size = header_size;
@@ -213,11 +231,10 @@ void set_tags(FILE *song, char *tag, char *new_value, long header_size, ID3v2_he
         degree = 256;
     }
     char *buffer = (char *)malloc((header_size + curr_size + 10) * sizeof(char));
-    while (i < header_size - 1) {
-        
+    int iter = 0;
+    while (iter < header_size - 1) {
         char frame_name[5];   
         fread(frame_name, sizeof(char), 4, song);
-        
         if (frame_name[0] == 0) {
             break;
         }
@@ -227,6 +244,7 @@ void set_tags(FILE *song, char *tag, char *new_value, long header_size, ID3v2_he
         }
         memmove(&buffer[i], frame_name, 4);
         i += 4;
+        iter += 4;
         unsigned char size_arr[4];
         fread(size_arr, sizeof(char), 4, song);
         long multiplier = degree * degree * degree;
@@ -249,17 +267,19 @@ void set_tags(FILE *song, char *tag, char *new_value, long header_size, ID3v2_he
         }
         memmove(&buffer[i], size_arr, 4);
         i += 4;
+        iter += 4;
         char flags[2];
         fread(flags, sizeof(char), 2, song);
         memmove(&buffer[i], flags, 2);
         i += 2;
+        iter += 2;
         if (found == 1) {
-            frame_size = curr_size - 1;
             memmove(&buffer[i], "\0", 1);
             i += 1;
-            memmove(&buffer[i], new_value, frame_size);
+            memmove(&buffer[i], new_value, curr_size - 1);
             found = 2;
             fseek(song, prev_size, SEEK_CUR);
+            i += curr_size - 1;
         }
         else {
             char *frame_value = (char *)malloc(frame_size * sizeof(char));
@@ -267,12 +287,15 @@ void set_tags(FILE *song, char *tag, char *new_value, long header_size, ID3v2_he
             memmove(&buffer[i], frame_value, frame_size);
             free(frame_value);
             frame_value = NULL;
+            i += frame_size;
         }
-        i += frame_size;
+    iter += frame_size;
         
     } 
     if (found == 0) {
+        printf("%c\n", buffer[i]);
         memmove(&buffer[i], tag, 4);
+        printf("%s\n", tag);
         i += 4;
         long divider = 128;
         if (header->fields.version == 3) {
@@ -288,8 +311,8 @@ void set_tags(FILE *song, char *tag, char *new_value, long header_size, ID3v2_he
         i += 4;
         memmove(&buffer[i], "\0\0", 2);
         i += 2;
-        memmove(&buffer[i], "\0", 1);
-        i += 1;
+        // memmove(&buffer[i], "\0", 1);
+        // i += 1;
         memmove(&buffer[i], new_value, curr_size);
         i += curr_size;
         curr_size += 10;
@@ -322,47 +345,114 @@ void set_tags(FILE *song, char *tag, char *new_value, long header_size, ID3v2_he
 }
 
 
-// void info(char frame_name, char *frame_value, long frame_size) {
-//     int pos = 0;
-//     int encode = 0;
-//     while (frame_value[pos] == '\0') {
-//         ++pos;
-//     }
-//     wchar_t *new_frame_value;
-//     MultiByteToWideChar(CP_UTF8, MB_PRECOMPOSED, frame_value, frame_size, new_frame_value, 0);
-//     if (frame_value[pos] == (char)0x1 && frame_value[pos + 1] == (char)0xff && frame_value[pos + 2] == (char)0xfe) {
-//         pos += 3;
-//         encode = 1;
-//     }    
-    
-//     switch (frame_name) {
-//         case 'T':
-//             while (pos < frame_size) {
-//                 if (frame_value[pos] == '\0') {
-//                     printf("\n\t");
-//                 }
-//                 else if (!encode){
-//                     printf("%c", frame_value[pos]);
-//                 }
-//                 else {
-//                     wprintf(new_frame_value);
-//                 }
-//                 ++pos;
-//             }
-//             break;
-//         case 'A':
-//             printf("image\n");
-//             break;
-//         default:
-//             while (pos < frame_size) {
-//                 if (frame_value[pos] == '\0') {
-//                     printf("\n\t");
-//                 }
-//                 else {
-//                     printf("%c", frame_value[pos]);
-//                 }
-//                 ++pos;
-//             }
-//             break;
-//     }
-// }
+void get_info(char *frame_name, char *frame_value, long frame_size) {
+    printf("%s ", frame_name);
+    int pos = 0;
+    switch (frame_name[0]) {
+        case 'A':
+            if (strcmp(frame_name, "APIC") == 0) {
+                out_image(frame_value, frame_size);
+                return;
+            }
+            break;
+        case 'T': case 'O': 
+            if (frame_size > pos + 2 && frame_value[pos] == (char)0x1 
+            && frame_value[pos + 1] == (char)0xff && frame_value[pos + 2] == (char)0xfe) {
+                pos += 3;
+            }
+            while (pos < frame_size) {
+                printf("%c", frame_value[pos]);
+                ++pos;
+            }
+            break;
+        case 'C':
+            if (strcmp(frame_name, "COMM") == 0) {
+                while (pos < 4) {
+                    printf("%c", frame_value[pos]);
+                    ++pos;
+                }
+                printf("\n\t");
+            }            
+            while (pos < frame_size) {
+                if (frame_size > pos + 2 && frame_value[pos] == (char)0x1 && 
+                frame_value[pos + 1] == (char)0xff && frame_value[pos + 2] == (char)0xfe) {
+                    pos += 3;
+                }
+                if (strcmp(frame_name, "COMR") == 0) {
+                    if (frame_size > pos + 5) {
+                        if (frame_value[pos] == 'i' && frame_value[pos + 1] == 'm' 
+                        && frame_value[pos + 2] == 'a' && frame_value[pos + 3] == 'g' 
+                        && frame_value[pos + 4] == 'e' && frame_value[pos + 5] == '\\') {
+                            out_image(&frame_value[pos - 1], frame_size - pos);
+                            return;
+                        }
+                    }
+                }
+                printf("%c", frame_value[pos]);
+                ++pos;
+            }
+            break;
+        case 'U':
+            if (strcmp(frame_name, "UFID") == 0) {
+                printf("%s", frame_value);
+                return;
+            }
+            pos = 1;
+            while (pos < frame_size) {
+                printf("%c", frame_value[pos]);
+                ++pos;
+            }
+            break;
+        case 'W':
+            printf("%s", frame_value);
+            break;
+        case 'G':
+            if (strcmp(frame_name, "GRID") == 0) {
+                printf("%s", frame_value);
+                break;
+            }
+        default:
+            break;
+    }
+    printf("\n");
+}
+
+
+void out_image(char *frame_value, long frame_size) {
+    char buff_name[] = "tmp_image.xxxx";
+    int j = 0;
+    while (j < 4) {
+        buff_name[10 + j] = frame_value[7 + j];
+        ++j;
+    }
+    j += 7;
+    if (frame_value[j] == '\0') {
+        j += 3;
+    }
+    else {
+        j += 2;
+    }
+    if (buff_name[10] == 'j') {
+        while (frame_value[j] != (char)0xff && frame_value[j + 1] != (char)0xd8) {
+            ++j;
+        }
+    }
+    else {
+        while (frame_value[j] != (char)0x89 && frame_value[j + 1] != (char)0x50 
+        && frame_value[j + 2] != (char)0x4e && frame_value[j + 3] != (char)0x47) {
+            ++j;
+        }
+    }
+    FILE *image = fopen(buff_name, "wb");
+    if (image == NULL) {
+        printf("Unable to save a picture in a file! Try again!\n");
+        return;
+    }
+    printf("Your picture was saved in %s file\n", buff_name);
+    while (j < frame_size) {
+        fputc(frame_value[j], image);
+        ++j;
+    }
+    fflush(image);
+    fclose(image);
+}
