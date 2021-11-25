@@ -4,12 +4,12 @@
 
 int options(char *option);
 int getLines(FILE *fin, int mode);
-enum comandlet {
+enum Comandlet {
     
-    option_list = 1,
-    num_of_lines,
-    size_in_bytes,
-    num_of_words
+    OPTION_LIST = 1,
+    NUM_OF_LINES,
+    SIZE_IN_BYTES,
+    NUM_OF_WORDS
 
 };
 int main(int argc, char *argv[]) {
@@ -72,19 +72,19 @@ int main(int argc, char *argv[]) {
 
 /* Функция ассоциирует команду с числовым кодом для использования в switch */
 int options(char *argument) {
-    enum comandlet;
+    enum Comandlet;
 
     if (strcmp(argument, "-o") == 0 || strcmp(argument, "--options") == 0) {
-        return option_list;
+        return OPTION_LIST;
     }
     if (strcmp(argument, "-l") == 0 || strcmp(argument, "--lines") == 0) {
-        return num_of_lines;
+        return NUM_OF_LINES;
     }
     if (strcmp(argument, "-c") == 0 || strcmp(argument, "--bytes") == 0) {
-        return size_in_bytes;
+        return SIZE_IN_BYTES;
     }
     if (strcmp(argument, "-w") == 0 || strcmp(argument, "--words") == 0) {
-        return num_of_words;
+        return NUM_OF_WORDS;
     }
     return 0;
 }
