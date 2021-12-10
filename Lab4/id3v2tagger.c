@@ -369,21 +369,20 @@ void set_tags(FILE *song, char *tag, char *new_value, int header_size, ID3v2_hea
         tmp /= header_divisor;
     }
     /* Запись головного фрейма в файл */
-    for (int i = 0; i < 10; ++i) {
-        fputc(header->string_version[i], new_file);
-    }
+    fwrite(header->string_version, 10, 1, new_file);
     /* Запись всех сохранённых фреймов в файл */
-    for (int i = 0; i < new_header_size; ++i) {
-        fputc(buffer[i], new_file);
-    }
+    fwrite(buffer, new_header_size, 1, new_file);
     fflush(new_file);
     free(buffer);
     /* Заполнение файла оставшейся информацией, не связанной с извлечёнными метаданными */
+    fseek(song, 0, SEEK_END);
+    int bin_data_ends = ftell(song);
     fseek(song, old_header_size + 10, SEEK_SET);
-    int symbol;
-    while ((symbol = fgetc(song)) != EOF) {
-        fputc(symbol, new_file);
-    }
+    int bin_data_begins = ftell(song);
+    int bin_data_size = bin_data_ends - bin_data_begins;
+    char *bin_data = (char *)malloc(bin_data_size * sizeof(char));
+    fread(bin_data, bin_data_size, 1, song);
+    fwrite(bin_data, bin_data_size, 1, new_file);
     fflush(new_file);
     fclose(new_file);
 }
