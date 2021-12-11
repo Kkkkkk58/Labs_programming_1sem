@@ -515,10 +515,7 @@ void save_image(char *frame_value, int frame_size) {
         return;
     }
     printf("Your picture was saved in %s file\n", buff_name);
-    while (j < frame_size) {
-        fputc(frame_value[j], image);
-        ++j;
-    }
+    fwrite(&frame_value[j], frame_size - j, 1, image);
     fflush(image);
     fclose(image);
 }
