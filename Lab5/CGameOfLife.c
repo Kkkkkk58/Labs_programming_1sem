@@ -143,14 +143,15 @@ int main(int argc, char *argv[]) {
             fwrite(colours.string_version, sizeof(Colour_values), 1, temp);
             fwrite(interpretation, binary_data_size, 1, temp);
             fclose(temp);
-     
+            /* ВАЖНО */
             BITMAP bm;
             HDC hdc_window = GetDC(NULL);
-            HBITMAP hBitmap = (HBITMAP) LoadImage(NULL, file_path, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+            HBITMAP hBitmap = (HBITMAP)LoadImage(NULL, file_path, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
             GetObject(hBitmap, sizeof(BITMAP), &bm);
             HDC hdcMem = CreateCompatibleDC(hdc_window);
             SelectObject(hdcMem,hBitmap);
-            BitBlt(hdc_window, 10, 20, bm.bmWidth, bm.bmHeight, hdcMem, 0, 0, SRCCOPY);
+            BitBlt(hdc_window, 800, 300, bm.bmWidth, bm.bmHeight, hdcMem, 0, 0, SRCCOPY);
+            // DeleteDC(hdc_window);
         } 
         if (game_continues[1] == 0) {
             free(game_continues);
@@ -293,7 +294,7 @@ int *new_generation(unsigned char *game_field, unsigned char *tmp, int height, i
             }
         }
     }
-    int *game_continues = (int *)malloc(sizeof(int));
+    int *game_continues = (int *)malloc(2 * sizeof(int));
     game_continues[0] = life_remains_stable;
     game_continues[1] = life_exists;
     return game_continues;
