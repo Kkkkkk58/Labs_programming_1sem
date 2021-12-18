@@ -457,6 +457,7 @@ void display_image(char *file_path, int display_offset) {
     Sleep(display_offset);
 }
 
+
 /* Функция для получения координат центра экрана */
 void get_desktop_center(void) {
     center_x = GetSystemMetrics(SM_CXSCREEN) / 2;
