@@ -51,6 +51,7 @@ void create(char *archive_name, int files_number, char *files_names[]) {
             printf("Unable to open the file named \"%s\". Skipping...\n", files_names[i]);
             continue;
         }
+        printf("Adding \"%s\" to the archive...", files_names[i]);
         fwrite(files_names[i], strlen(files_names[i]) + 1, 1, archive);
         fseek(archive_content, 0, SEEK_END);
         unsigned int size = ftell(archive_content);
@@ -63,24 +64,34 @@ void create(char *archive_name, int files_number, char *files_names[]) {
         fwrite(file_buf, size, 1, archive);
         free(file_buf);
         fclose(archive_content);
+        printf(" Done!\n");
     }
+    printf("All valid given files were added to the archive named \"%s\"", archive_name);
     fclose(archive);
 }
 
 
 void extract(char *archive_name) {
     FILE *archive = fopen(archive_name, "rb");
+    if (archive == NULL) {
+        printf("Unable to open provided archive! Try again!\n");
+        exit(EXIT_FAILURE);
+    }
     int symbol = 0;
     int prev_position = 0;
     while (symbol != EOF) {
         while ((symbol = fgetc(archive)) != '\0' && symbol != EOF) {
             ;
         }
+        if (symbol == EOF) {
+            break;
+        }
         int new_position = ftell(archive);
         int name_size = new_position - prev_position;
         char *file_name = (char *)malloc(name_size * sizeof(char));
         fseek(archive, prev_position, SEEK_SET);
         fread(file_name, sizeof(char), name_size, archive);
+        printf("Extracting \"%s\"...\n", file_name);
         FILE *extracted_file = fopen(file_name, "wb");
         unsigned char size_arr[4];
         fread(size_arr, sizeof(unsigned char), 4, archive);
@@ -91,32 +102,32 @@ void extract(char *archive_name) {
         fclose(extracted_file);
         prev_position = ftell(archive);
     }
+    printf("All files were extracted from \"%s\" archive", archive_name);
     fclose(archive);
 }
 
 
 void list(char *archive_name) {
     FILE *archive = fopen(archive_name, "rb");
+    if (archive == NULL) {
+        printf("Unable to open provided archive! Try again!\n");
+        exit(EXIT_FAILURE);
+    }
+    printf("The archive \"%s\" contains following files:\n", archive_name);
     int symbol = 0;
-    // int prev_position = 0;
     while (symbol != EOF) {
         while ((symbol = fgetc(archive)) != '\0' && symbol != EOF) {
             printf("%c", symbol);
         }
+        if (symbol == EOF) {
+            return;
+        }
         printf("\n");
-        // int new_position = ftell(archive);
-        // int name_size = new_position - prev_position;
-        // char *file_name = (char *)malloc(name_size * sizeof(char));
-        // fread(file_name, sizeof(char), name_size, archive);
-        // printf("%s\n", file_name);
-        // free(file_name);
         unsigned char size_arr[4];
         fread(size_arr, sizeof(unsigned char), 4, archive);
         unsigned int data_size = get_size(size_arr);
         fseek(archive, data_size, SEEK_CUR);
-        // prev_position = ftell(archive);
     }
-
     fclose(archive);
 
 }
