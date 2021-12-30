@@ -2,12 +2,27 @@
 #include <stdlib.h>
 #include <string.h>
 #define SIZE_MULTIPLIER 256
+#define SWAP(x, y)        \
+    Huffman_tree tmp = x; \
+    x = y;                \
+    y = tmp;
 
+#pragma pack(push, 1)
+typedef struct Huffman_tree {
+    long long number_of_entries;
+    unsigned char symbol;
+} Huffman_tree;
+#pragma pack(pop)
+
+
+static Huffman_tree hash_table[256] = {0};
 void extract(char *archive_name);
 void list(char *archive_name);
 void create(char* archive_name, int files_number, char *files_names[]);
 unsigned char *count_size(unsigned int size);
 unsigned int get_size(unsigned char *size_arr);
+void count_entries(int files_number, char *files_names[]);
+// void quick_sort(Huffman_tree *array, int start, int end);
 
 
 int main(int argc, char *argv[]) {
@@ -45,6 +60,10 @@ void create(char *archive_name, int files_number, char *files_names[]) {
     if (archive == NULL) {
         printf("Unable to create the archive file! Try again!\n");
     }
+    count_entries(files_number, files_names);
+    // for (int i = 0; i < 256; ++i) {
+    //     printf("%d %c %d\n", i, hash_table[i].symbol, hash_table[i].number_of_entries);
+    // }
     for (int i = 0; i < files_number; ++i) {
         FILE *archive_content = fopen(files_names[i], "rb");
         if (archive_content == NULL) {
@@ -152,3 +171,48 @@ unsigned int get_size(unsigned char *size_arr) {
     }
     return size;
 }
+
+
+void count_entries(int files_number, char *files_names[]) {
+    for (int i = 0; i < 256; ++i) {
+        hash_table[i].symbol = i;
+    }
+    for (int i = 0; i < files_number; ++i) {
+        FILE *curr_file = fopen(files_names[i], "rb");
+        if (curr_file == NULL) {
+            continue;
+        }
+        int symbol;
+        while ((symbol = fgetc(curr_file)) != EOF) {
+            hash_table[symbol].number_of_entries += 1;
+        }
+        fclose(curr_file);
+    }
+    // quick_sort(hash_table, 0, 255);
+}
+
+
+// void quick_sort(Huffman_tree *array, int start, int end) {
+//     Huffman_tree pivot = array[(start + end) / 2];
+//     int i = start;
+//     int j = end;
+//     while (i <= j) {
+//         while (array[i].number_of_entries < pivot.number_of_entries) {
+//             ++i;
+//         }
+//         while (array[j].number_of_entries > pivot.number_of_entries) {
+//             --j;
+//         }
+//         if (i <= j) {
+//             SWAP(array[i], array[j]);
+//             ++i;
+//             --j;
+//         }
+//     }
+//     if (start < j) {
+//         quick_sort(array, start, j);
+//     }
+//     if (end > i) {
+//         quick_sort(array, i, end);
+//     }
+// }
