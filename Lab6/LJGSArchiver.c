@@ -17,7 +17,7 @@ typedef struct Huffman_tree {
 
 #pragma pack(push, 1)
 typedef struct Code {
-    unsigned char code_bytes[2];
+    unsigned char code_bytes[255];
     char length;
 } Code;
 #pragma pack(pop)
@@ -39,12 +39,9 @@ typedef struct Priority_queue {
 #pragma pack(pop)
 
 #pragma pack(push, 1)
-typedef union Huffman_table {
-    char string_version[4];
-    struct Fields {
-        unsigned char symbol;
-        Code code;
-    } fields;
+typedef struct Huffman_table {
+    unsigned char symbol;
+    Code code;
 } Huffman_table;
 #pragma pack(pop)
 
@@ -107,33 +104,36 @@ void create(char *archive_name, int files_number, char *files_names[]) {
     Node *tree = count_entries(files_number, files_names);
     Huffman_table new_hash_table[256];
     for (int i = 0; i < 256; ++i) {
-        new_hash_table[i].fields.code.length = -1;
+        new_hash_table[i].code.length = -1;
     }
     tree_walk(tree, new_hash_table);
     int sign_cnt = 0;
-    char *header_buf = (char *)calloc(4 * 256, sizeof(char));
+    char *header_buf = (char *)calloc(256 * 256, sizeof(char));
     int pos = 0;
     for (int i = 0; i < 256; ++i) {
-        if (new_hash_table[i].fields.code.length != -1) {
-            // fwrite(new_hash_table[i].string_version, 4, 1, archive);
-            memmove(&header_buf[pos], new_hash_table[i].string_version, 4);
-            pos += 4;
+        if (new_hash_table[i].code.length != -1) {
+            memmove(&header_buf[pos], &(new_hash_table[i].symbol), 1);
+            ++pos;
+            memmove(&header_buf[pos], &(new_hash_table[i].code.length), 1);
+            ++pos;
+            memmove(&header_buf[pos], new_hash_table[i].code.code_bytes, new_hash_table[i].code.length);
+            pos += new_hash_table[i].code.length;
             ++sign_cnt;
         }
     }
-    char size_header[2] = {0};
+    char letters_number[2] = {0};
     if (sign_cnt == 256) {
-        size_header[1] = 1;
+        letters_number[1] = 1;
     }
     else {
-        size_header[0] = sign_cnt;
+        letters_number[0] = sign_cnt;
     }
-    fwrite(size_header, sizeof(char), 2, archive);
-    fwrite(header_buf, sizeof(char), 4 * sign_cnt, archive);
+    fwrite(letters_number, sizeof(char), 2, archive);
+    unsigned char *header_size = count_size(pos);
+    fwrite(header_size, sizeof(unsigned char), 4, archive);
+    free(header_size);
+    fwrite(header_buf, sizeof(char), pos, archive);
     free(header_buf);
-    // for (int i = 0; i < 256; ++i) {
-    //     printf("%d %c %d\n", i, hash_table[i].symbol, hash_table[i].number_of_entries);
-    // }
     for (int i = 0; i < files_number; ++i) {
         FILE *archive_content = fopen(files_names[i], "rb");
         if (archive_content == NULL) {
@@ -142,47 +142,23 @@ void create(char *archive_name, int files_number, char *files_names[]) {
         }
         printf("Adding \"%s\" to the archive...", files_names[i]);
         fwrite(files_names[i], strlen(files_names[i]) + 1, 1, archive);
-        // fseek(archive_content, 0, SEEK_END);
-        // unsigned int size = ftell(archive_content);
-        // fseek(archive_content, 0, SEEK_SET);
         FILE *tmp = fopen("tmp", "wb");
         int symbol;
         char curr_byte = 0, byte_length = 0;
         char tail = 0;
         while ((symbol = fgetc(archive_content)) != EOF) {
-            Code encoded = new_hash_table[symbol].fields.code;
-            int mult = 128;
-            // printf("%c %d %d\n", symbol, encoded.code_bytes[0], encoded.length);
+            Code encoded = new_hash_table[symbol].code;
             for (int i = 0; i < encoded.length; ++i) {
-                // printf("%d\n", curr_byte);
-                if (i < 8) {
-                    // printf("%d\n", encoded.code_bytes[0] & mult);
-                    if ((encoded.code_bytes[0] & mult) != 0) {
-                        curr_byte |= (1 << (7 - byte_length));
-                    }
-                    else {
-                        curr_byte &= ~(1 << (7 - byte_length));
-                    }
-                    mult /= 2;
-                    ++byte_length;
-                    if (byte_length == 8) {
-                        fputc(curr_byte, tmp);
-                        curr_byte = byte_length = 0;
-                    }
+                if ((encoded.code_bytes[i] & 0x1) != 0) {
+                    curr_byte |= (1 << (7 - byte_length));
                 }
                 else {
-                    mult = (i == 8) ? 128 : 128 / (2 * (i - 8));
-                    if ((encoded.code_bytes[1] & mult) != 0) {
-                        curr_byte |= (1 << (7 - byte_length));
-                    }
-                    else {
-                        curr_byte &= ~(1 << (7 - byte_length));
-                    }
-                    ++byte_length;
-                    if (byte_length == 8) {
-                        fputc(curr_byte, tmp);
-                        curr_byte = byte_length = 0;
-                    }
+                    curr_byte &= ~(1 << (7 - byte_length));
+                }
+                ++byte_length;
+                if (byte_length == 8) {
+                    fputc(curr_byte, tmp);
+                    curr_byte = byte_length = 0;
                 }
             }
         }
@@ -190,11 +166,7 @@ void create(char *archive_name, int files_number, char *files_names[]) {
             tail = 8 - byte_length;
             fputc(curr_byte, tmp);
         }
-        unsigned int original_size = ftell(archive_content);
         fclose(archive_content);
-        unsigned char *original_size_array = count_size(original_size);
-        fwrite(original_size_array, 4, 1, archive);
-        free(original_size_array);
         unsigned int compressed_size = ftell(tmp);
         fclose(tmp);
         FILE *tmp_r = fopen("tmp", "rb");
@@ -209,15 +181,6 @@ void create(char *archive_name, int files_number, char *files_names[]) {
         free(file_buf);
         fclose(tmp_r);
         remove("tmp");
-        // unsigned char *size_array = count_size(size);
-        // fwrite(size_array, 4, 1, archive);
-        // free(size_array);
-        // fseek(archive_content, 0, SEEK_SET);
-        // char *file_buf = (char *)malloc(size * sizeof(char));
-        // fread(file_buf, sizeof(char), size, archive_content);
-        // fwrite(file_buf, size, 1, archive);
-        // free(file_buf);
-
         printf(" Done!\n");
     }
     printf("All valid given files were added to the archive named \"%s\"", archive_name);
@@ -237,45 +200,42 @@ void extract(char *archive_name) {
     if (header_size[1] == 1) {
         offset = 256;
     }
-    Multimap multimap[16];
-    for (int i = 0; i < 16; ++i) {
+    fseek(archive, 4, SEEK_CUR);
+    Multimap multimap[255];
+    for (int i = 0; i < 255; ++i) {
         multimap[i].size = 0;
         multimap[i].codes = NULL;
     }
     for (int i = 0; i < offset; ++i) {
         Huffman_table table;
-        fread(&(table.string_version), sizeof(char), 4, archive);
-        int index = table.fields.code.length - 1;
-        ++(multimap[index].size);
-        multimap[index].codes = (Huffman_table *)realloc(multimap[index].codes, multimap[index].size * sizeof(multimap[index]));
+        memset(table.code.code_bytes, 0, 255);
+        // for (int i = 0; i < 255; ++i) {
+        //     table.code.code_bytes[i] = 0;
+        // }
+        fread(&(table.symbol), sizeof(unsigned char), 1, archive);
+        fread(&(table.code.length), sizeof(unsigned char), 1, archive);
+        fread((table.code.code_bytes), sizeof(unsigned char), table.code.length, archive);
+        int index = table.code.length - 1;
+        multimap[index].size += 1;
+        multimap[index].codes = (Huffman_table *)realloc(multimap[index].codes, multimap[index].size * sizeof(Huffman_table));
         multimap[index].codes[multimap[index].size - 1] = table;
     }
-    for (int i = 0; i < 16; ++i) {
+    for (int i = 0; i < 255; ++i) {
         if (multimap[i].size > 1) {
             quick_sort_tables(multimap[i].codes, 0, multimap[i].size - 1);
         }
+        // if (multimap[i].size != 0) {
+        //     printf("LEN %d\n", i + 1);
+        //     for (int j = 0; j < multimap[i].size; ++j) {
+        //         printf("%c %s\n", multimap[i].codes[j].symbol, multimap[i].codes[j].code);
+        //     }
+        // }
     }
-    for (int i = 0; i < 16; ++i) {
-        if (multimap[i].size != 0) {
-            printf("LEN %d\n", i + 1);
-            for (int j = 0; j < multimap[i].size; ++j) {
-                printf("%c %d %d\n", multimap[i].codes[j].fields.symbol, multimap[i].codes[j].fields.code.code_bytes[0], multimap[i].codes[j].fields.code.code_bytes[1]);
-            }
-        }
-    }
-    // for (int i = 0; i < 16; ++i) {
-    //     if (multimap[i].size != 0) {
-    //         printf("LEN %d, %d ELEM\n", i, multimap[i].size);
-    //         for (int j = 0; j < multimap[i].size; ++j) {
-    //             printf("%c %d %d\n", multimap[i].codes[j].fields.symbol, multimap[i].codes[j].fields.code.code_bytes[0], multimap[i].codes[j].fields.code.code_bytes[1]);
-    //         }
-    //     }
-    // }
     // exit(0);
     int symbol = 0;
     int prev_position = ftell(archive);
     int i = 0;
-    char *names[] = {"1.jpg", "2.jpg", "3.jpg", "4.jpg"};
+    char *names[] = {"vim_e.txt", "pin_e.txt", "2_e.txt", "4.jpg"};
     while (symbol != EOF) {
         while ((symbol = fgetc(archive)) != '\0' && symbol != EOF) {
             ;
@@ -289,52 +249,40 @@ void extract(char *archive_name) {
         fseek(archive, prev_position, SEEK_SET);
         fread(file_name, sizeof(char), name_size, archive);
         printf("Extracting \"%s\"...\n", file_name);
-        FILE *extracted_file = fopen("tmp.txt", "wb");
+        FILE *extracted_file = fopen(names[i], "wb");
         ++i;
-        unsigned char original_size_arr[4];
-        fread(original_size_arr, sizeof(unsigned char), 4, archive);
-        unsigned int original_size = get_size(original_size_arr);
         unsigned char compressed_size_arr[4];
         fread(compressed_size_arr, sizeof(unsigned char), 4, archive);
         unsigned int compressed_size = get_size(compressed_size_arr);
         char tail;
         fread(&tail, sizeof(char), 1, archive);
         int pos = 0;
-        unsigned char curr_byte[2] = {0};
+        unsigned char curr_byte[256] = {0};
         char byte_length = 0;
         while (pos < compressed_size - 1) {
-            // printf("ASSAS\n");
             unsigned char to_decode = fgetc(archive);
             ++pos;
             int mult = 128;
             for (int i = 0; i < 8; ++i) {
-                
-                
-                if (byte_length < 8) {
-                    if ((to_decode & mult) != 0) {
-                        curr_byte[0] |= (1 << (7 - byte_length));
-                    }
-                    else {
-                        curr_byte[0] &= ~(1 << (7 - byte_length));
-                    }
+                if ((to_decode & mult) != 0) {
+                    strcat(curr_byte, "1");
                 }
                 else {
-                    if ((to_decode & mult) != 0) {
-                        curr_byte[1] |= (1 << (15 - byte_length));
-                    }
-                    else {
-                        curr_byte[1] &= ~(1 << (15 - byte_length));
-                    }
+                    strcat(curr_byte, "0");
                 }
+                // printf("SEEKING %s\n", curr_byte);
                 mult /= 2;
                 ++byte_length;
                 if (multimap[byte_length - 1].size != 0) {
-                    // printf("%d %d %d\n", byte_length, curr_byte[0], curr_byte[1]);
+                    
                     Huffman_table *temp = binsearch(multimap[byte_length - 1].codes, 0, multimap[byte_length - 1].size - 1, curr_byte);
                     if (temp != NULL) {
-                        // printf("KKKK\n");
-                        fputc(temp->fields.symbol, extracted_file);
-                        curr_byte[0] = curr_byte[1] = 0;
+                        fputc(temp->symbol, extracted_file);
+                        // printf("FOUNDYOU %c\n", temp->symbol);
+                        // for (int k = 0; k < 255; ++k) {
+                        //     curr_byte[k] = 0;
+                        // }
+                        memset(curr_byte, 0, 255);
                         byte_length = 0;
                     }
                 }
@@ -344,45 +292,28 @@ void extract(char *archive_name) {
         int mult = 128;
         unsigned char last_byte = fgetc(archive);
         for (int i = 0; i < (8 - tail); ++i) {
-            // printf("WHYYYYYY\n");
-            if (byte_length < 8) {
-                if ((last_byte & mult) != 0) {
-                    curr_byte[0] |= (1 << (7 - byte_length));
-                }
-                else {
-                    curr_byte[0] &= ~(1 << (7 - byte_length));
-                }
+            if ((last_byte & mult) != 0) {
+                strcat(curr_byte, "1");
             }
             else {
-                if ((last_byte & mult) != 0) {
-                    curr_byte[1] |= (1 << (15 - byte_length));
-                }
-                else {
-                    curr_byte[1] &= ~(1 << (15 - byte_length));
-                }
+                strcat(curr_byte, "0");
             }
+            // printf("SEEKING %s\n", curr_byte);
             mult /= 2;
             ++byte_length;
             if (multimap[byte_length - 1].size != 0) {
-                // printf("%d %d %d\n", byte_length, curr_byte[0], curr_byte[1]);
                 Huffman_table *temp = binsearch(multimap[byte_length - 1].codes, 0, multimap[byte_length - 1].size - 1, curr_byte);
                 if (temp != NULL) {
-                    fputc(temp->fields.symbol, extracted_file);
-                    curr_byte[0] = curr_byte[1] = 0;
+                    fputc(temp->symbol, extracted_file);
+                    // printf("FOUNDYOU %c\n", temp->symbol);
+                    // for (int k = 0; k < 255; ++k) {
+                    //     curr_byte[k] = 0;
+                    // }
+                    memset(curr_byte, 0, 255);
                     byte_length = 0;
                 }
             }
         }
-        
-        // unsigned char size_arr[4];
-        // fread(size_arr, sizeof(unsigned char), 4, archive);
-        // unsigned int data_size = get_size(size_arr);
-        // char tail;
-        // fread(&tail, sizeof(char), 1, archive);
-        // char *file_buf = (char *)malloc(data_size * sizeof(char));
-        // fread(file_buf, sizeof(char), data_size, archive);
-
-        // fwrite(file_buf, sizeof(char), data_size, extracted_file); 
         fclose(extracted_file);
         prev_position = ftell(archive);
     }
@@ -398,13 +329,11 @@ void list(char *archive_name) {
         exit(EXIT_FAILURE);
     }
     printf("The archive \"%s\" contains following files:\n", archive_name);
-    unsigned char header_size[2];
-    fread(header_size, sizeof(unsigned char), 2, archive);
-    int offset = header_size[0];
-    if (header_size[1] == 1) {
-        offset = 256;
-    }
-    fseek(archive, offset * 4, SEEK_CUR);
+    fseek(archive, 2, SEEK_SET);
+    unsigned char header_size[4];
+    fread(header_size, sizeof(unsigned char), 4, archive);
+    unsigned int offset = get_size(header_size);
+    fseek(archive, offset, SEEK_CUR);
     int symbol = 0;
     while (symbol != EOF) {
         while ((symbol = fgetc(archive)) != '\0' && symbol != EOF) {
@@ -414,14 +343,12 @@ void list(char *archive_name) {
             return;
         }
         printf("\n");
-        fseek(archive, 4, SEEK_CUR);
         unsigned char size_arr[4];
         fread(size_arr, sizeof(unsigned char), 4, archive);
         unsigned int data_size = get_size(size_arr);
         fseek(archive, data_size + 1, SEEK_CUR);
     }
     fclose(archive);
-
 }
 
 
@@ -472,7 +399,7 @@ Node *count_entries(int files_number, char *files_names[]) {
             hash_table[i].root->symbol = hash_table[i].symbol;
             hash_table[i].root->frequency = hash_table[i].number_of_entries;
             hash_table[i].root->left = hash_table[i].root->right = NULL;
-            hash_table[i].root->code.code_bytes[0] = hash_table[i].root->code.code_bytes[1] = 0;
+            hash_table[i].root->code.code_bytes[0] = 0;
             hash_table[i].root->code.length = 0;
         }
     }
@@ -493,7 +420,7 @@ Node *count_entries(int files_number, char *files_names[]) {
         new_node->right = least_2;
         new_node->frequency = least_1->frequency + least_2->frequency;
         new_node->symbol = -1;
-        new_node->code.code_bytes[0] = new_node->code.code_bytes[1] = 0;
+        new_node->code.code_bytes[0] = 0;
         new_node->code.length = 0;
         --(queue.size);
         queue.array[queue.head] = new_node;
@@ -509,9 +436,6 @@ Node *count_entries(int files_number, char *files_names[]) {
         }
     }
     make_codes(queue.array[queue.head]);
-    // tree_walk(queue.array[queue.head]);
-    // printf("DONE\n");
-    // printf("ROOT %c %d\n", queue.array[queue.head]->right->right->right->right->right->right->right->right->symbol, queue.array[queue.head]->right->right->right->right->right->right->right->right->frequency);
     return queue.array[queue.head];
  }
 
@@ -520,27 +444,13 @@ void make_codes(Node *tree) {
     if (tree->left != NULL) {
         tree->left->code.length = tree->code.length + 1;
         strcpy(tree->left->code.code_bytes, tree->code.code_bytes);
-        if (tree->code.length <= 7) {
-            tree->left->code.code_bytes[0] &= ~(1 << (7 - tree->code.length));
-        }
-        else {
-            tree->left->code.code_bytes[1] &= ~(1 << (7 - (tree->code.length - 8)));
-        }
-        // strcpy(tree->left->code, tree->code);
-        // strcat(tree->left->code, "0");
+        strcat(tree->left->code.code_bytes, "0");
         make_codes(tree->left);
     }
     if (tree->right != NULL) {
         tree->right->code.length = tree->code.length + 1;
         strcpy(tree->right->code.code_bytes, tree->code.code_bytes);
-        if (tree->code.length <= 7) {
-            tree->right->code.code_bytes[0] |= (1 << (7 - tree->code.length));
-        }
-        else {
-            tree->right->code.code_bytes[1] |= (1 << (7 - (tree->code.length - 8)));
-        }
-        // strcpy(tree->right->code, tree->code);
-        // strcat(tree->right->code, "1");
+        strcat(tree->right->code.code_bytes, "1");
         make_codes(tree->right);
     }
 }
@@ -549,9 +459,8 @@ void make_codes(Node *tree) {
 void tree_walk(Node *tree, Huffman_table *table) {
     if (tree != NULL) {
         if (tree->symbol != -1) {
-            table[tree->symbol].fields.symbol = tree->symbol;
-            table[tree->symbol].fields.code = tree->code;
-            // printf("FREQ %d SYM %c CODE %d %d %d\n", tree->frequency, tree->symbol, tree->code.code_bytes[0], tree->code.code_bytes[1], tree->code.length);
+            table[tree->symbol].symbol = tree->symbol;
+            table[tree->symbol].code = tree->code;
         }
         if (tree->left != NULL) {
             tree_walk(tree->left, table);
@@ -595,14 +504,10 @@ void quick_sort_tables(Huffman_table *array, int start, int end) {
     int i = start;
     int j = end;
     while (i <= j) {
-        while (array[i].fields.code.code_bytes[0] < pivot.fields.code.code_bytes[0] ||
-        array[i].fields.code.code_bytes[0] == pivot.fields.code.code_bytes[0] &&
-        array[i].fields.code.code_bytes[1] < pivot.fields.code.code_bytes[1]) {
+        while (strcmp(array[i].code.code_bytes, pivot.code.code_bytes) < 0) {
             ++i;
         }
-        while (array[j].fields.code.code_bytes[0] > pivot.fields.code.code_bytes[0] ||
-        array[j].fields.code.code_bytes[0] == pivot.fields.code.code_bytes[0] &&
-        array[j].fields.code.code_bytes[1] > pivot.fields.code.code_bytes[1]) {
+        while (strcmp(array[j].code.code_bytes, pivot.code.code_bytes) > 0) {
             --j;
         }
         if (i <= j) {
@@ -622,21 +527,18 @@ void quick_sort_tables(Huffman_table *array, int start, int end) {
 }
 
 
-Huffman_table *binsearch(Huffman_table *array, int start, int end, unsigned char *to_seek) {
+Huffman_table *binsearch(Huffman_table *array, int start, int end, unsigned char to_seek[]) {
     int mid = (start + end) / 2;
-    if (start >= end && (array[mid].fields.code.code_bytes[0] != to_seek[0] || array[mid].fields.code.code_bytes[1] != to_seek[1])) {
-        // printf("SWAT");
+    if (start >= end && (strcmp(array[mid].code.code_bytes, to_seek) != 0)) {
         return NULL;
     }
-    if (array[mid].fields.code.code_bytes[0] == to_seek[0] && array[mid].fields.code.code_bytes[1] == to_seek[1]) {
+    if (strcmp(array[mid].code.code_bytes, to_seek) == 0) {
         return &(array[mid]);
     }
-    if (array[mid].fields.code.code_bytes[0] < to_seek[0] || array[mid].fields.code.code_bytes[0] == to_seek[0] && array[mid].fields.code.code_bytes[1] < to_seek[1]) {
-        // printf("%d %d\n", array[mid].fields.code.code_bytes[0], array[mid].fields.code.code_bytes[1]);
+    if (strcmp(array[mid].code.code_bytes, to_seek) < 0) {
         return binsearch(array, mid + 1, end, to_seek);
     }
-    if (array[mid].fields.code.code_bytes[0] > to_seek[0] || array[mid].fields.code.code_bytes[0] == to_seek[0] && array[mid].fields.code.code_bytes[1] > to_seek[1]) {
-        // printf("%d %d\n", array[mid].fields.code.code_bytes[0], array[mid].fields.code.code_bytes[1]);
+    if (strcmp(array[mid].code.code_bytes, to_seek) > 0) {
         return binsearch(array, start, mid - 1, to_seek);
     }
     return NULL;
