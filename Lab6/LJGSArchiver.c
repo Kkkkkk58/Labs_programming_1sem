@@ -1,13 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <direct.h>
 #define SIZE_MULTIPLIER 256
-#define SWAP(x, y)        \
-    Huffman_tree tmp = x; \
-    x = y;                \
+#define MAX_DIR_NAME 255
+#define SWAP(x, y) \
+    tmp = x;       \
+    x = y;         \
     y = tmp;
 
-#pragma pack(push, 1)
+#pragma pack(push, 2)
 typedef struct Huffman_tree {
     long long number_of_entries;
     int symbol;
@@ -15,14 +17,12 @@ typedef struct Huffman_tree {
 } Huffman_tree;
 #pragma pack(pop)
 
-#pragma pack(push, 1)
 typedef struct Code {
     unsigned char code_bytes[255];
     char length;
 } Code;
-#pragma pack(pop)
 
-#pragma pack(push, 1)
+#pragma pack(push, 2)
 typedef struct Node {
     int symbol;
     struct Node *left, *right;
@@ -31,30 +31,26 @@ typedef struct Node {
 } Node;
 #pragma pack(pop)
 
-#pragma pack(push, 1)
 typedef struct Priority_queue {
     Node *array[256];
-    int head, tail, size;
+    int head, size;
 } Priority_queue;
-#pragma pack(pop)
 
-#pragma pack(push, 1)
+
 typedef struct Huffman_table {
     unsigned char symbol;
     Code code;
 } Huffman_table;
-#pragma pack(pop)
 
-#pragma pack(push, 1)
 typedef struct Multimap {
     int size;
     Huffman_table *codes;
 } Multimap;
-#pragma pack(pop)
+
 
 
 static Huffman_tree hash_table[256] = {0};
-void extract(char *archive_name);
+void extract(char *archive_name, char *dirname);
 void list(char *archive_name);
 void create(char* archive_name, int files_number, char *files_names[]);
 unsigned char *count_size(unsigned int size);
@@ -66,8 +62,10 @@ void make_codes(Node *tree);
 void quick_sort_tables(Huffman_table *table, int start, int end);
 Huffman_table *binsearch(Huffman_table *array, int start, int end, unsigned char *to_seek);
 
+
 int main(int argc, char *argv[]) {
     char *archive_name = NULL;
+    char dirname[MAX_DIR_NAME] = "";
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--file") == 0) {
             archive_name = argv[i + 1];
@@ -77,8 +75,12 @@ int main(int argc, char *argv[]) {
             }
             ++i;
         }
+        else if (strcmp(argv[i], "--folder") == 0) {
+            strcpy(dirname, argv[i + 1]);
+            ++i;
+        } 
         else if (strcmp(argv[i], "--extract") == 0) {
-            extract(archive_name);
+            extract(archive_name, dirname);
         }
         else if (strcmp(argv[i], "--list") == 0) {
             list(archive_name);
@@ -188,7 +190,7 @@ void create(char *archive_name, int files_number, char *files_names[]) {
 }
 
 
-void extract(char *archive_name) {
+void extract(char *archive_name, char *dirname) {
     FILE *archive = fopen(archive_name, "rb");
     if (archive == NULL) {
         printf("Unable to open provided archive! Try again!\n");
@@ -234,8 +236,11 @@ void extract(char *archive_name) {
     // exit(0);
     int symbol = 0;
     int prev_position = ftell(archive);
-    int i = 0;
-    char *names[] = {"vim_e.txt", "pin_e.txt", "2_e.txt", "4.jpg"};
+    char path[MAX_DIR_NAME] = {0};
+    if (strcmp(dirname, "") != 0) {
+        mkdir(dirname);
+        sprintf(path, "%s\\", dirname);
+    }
     while (symbol != EOF) {
         while ((symbol = fgetc(archive)) != '\0' && symbol != EOF) {
             ;
@@ -249,8 +254,10 @@ void extract(char *archive_name) {
         fseek(archive, prev_position, SEEK_SET);
         fread(file_name, sizeof(char), name_size, archive);
         printf("Extracting \"%s\"...\n", file_name);
-        FILE *extracted_file = fopen(names[i], "wb");
-        ++i;
+        char full_name[MAX_DIR_NAME] = {0};
+        strcpy(full_name, path);
+        strcat(full_name, file_name);
+        FILE *extracted_file = fopen(full_name, "wb");
         unsigned char compressed_size_arr[4];
         fread(compressed_size_arr, sizeof(unsigned char), 4, archive);
         unsigned int compressed_size = get_size(compressed_size_arr);
@@ -317,7 +324,10 @@ void extract(char *archive_name) {
         fclose(extracted_file);
         prev_position = ftell(archive);
     }
-    printf("All files were extracted from \"%s\" archive", archive_name); //AND SAVED TO <DIRNAME> DIRECTORY
+    if (strcmp(dirname, "") == 0) {
+        strcpy(dirname, "current");
+    }
+    printf("All files were extracted from \"%s\" archive and saved to %s directory", archive_name, dirname);
     fclose(archive);
 }
 
@@ -409,7 +419,6 @@ Node *count_entries(int files_number, char *files_names[]) {
         queue.array[i] = hash_table[start + i].root;
     }
     queue.head = 0;
-    queue.tail = count;
     queue.size = count;
     while (queue.size >= 2) {
         Node *least_1 = queue.array[queue.head];
@@ -484,6 +493,7 @@ void quick_sort(Huffman_tree *array, int start, int end) {
             --j;
         }
         if (i <= j) {
+            Huffman_tree tmp;
             SWAP(array[i], array[j]);
             ++i;
             --j;
@@ -511,9 +521,8 @@ void quick_sort_tables(Huffman_table *array, int start, int end) {
             --j;
         }
         if (i <= j) {
-            Huffman_table tmp = array[i];
-            array[i] = array[j];
-            array[j] = tmp;
+            Huffman_table tmp;
+            SWAP(array[i], array[j]);
             ++i;
             --j;
         }
