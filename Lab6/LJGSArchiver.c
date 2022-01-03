@@ -2,7 +2,7 @@
  * @file LJGSArchiver.c
  * @author Karim Khasan (karimhasan3879@gmail.com)
  * 
- * @brief This program embodies the solution for Lab6 of the 1st semester of ITMO's C/C++ course
+ * @brief This program is the solution for Lab6 of the 1st semester of ITMO's C/C++ course
  * 
  * @details The program presents an archiver of a custom extension.
  *          The archiver supports adding files into it, listing all the files the archive consists of 
@@ -371,7 +371,7 @@ void extract(char *archive_name, char *dirname) {
         /* Обновление положения начала блока с файлом для работы со следующим файлом архива */
         prev_position = ftell(archive);
     }
-    
+
     if (strcmp(dirname, "") == 0) {
         strcpy(dirname, "current");
     }
