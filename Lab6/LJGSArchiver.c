@@ -377,6 +377,12 @@ void extract(char *archive_name, char *dirname) {
     }
     printf("All files were extracted from \"%s\" archive and saved to %s directory\n", archive_name, dirname);
     fclose(archive);
+
+    /* Освобождение памяти, выделенной для цепочек */
+    for (int i = 0; i < MAX_CODE_LEN; ++i) {
+        free(code_multimap[i].codes);
+    }
+
 }
 
 
@@ -535,7 +541,7 @@ Node *build_code_tree(int files_number, char *files_names[]) {
     /* Присвоение кодов элементам дерева */
     assign_codes(queue.array[queue.head]);
     return queue.array[queue.head];
- }
+}
 
 
 /* Составление новых кодов символов */
