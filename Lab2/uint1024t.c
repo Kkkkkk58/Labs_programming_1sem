@@ -152,27 +152,27 @@ int comparison_op(uint1024_t x, uint1024_t y) {
 }
 
 
-/* Вычетание */
+/* Вычитание */
 uint1024_t subtr_op(uint1024_t x, uint1024_t y) {
     uint1024_t difference;
     int comparison_res = comparison_op(x, y);
     int borrow = 0;  /* Занимаемое */
 
     switch (comparison_res) {
-        /* Если уменьшаемое меньше вычетаемого */
+        /* Если уменьшаемое меньше вычитаемого */
         case LESS:
             printf("Unable to subtract from the smaller value! :-");
             difference = from_uint(0);
             break;
 
-        /* Если уменшьшаемое равно вычетаемому */
+        /* Если уменшьшаемое равно вычитаемому */
         case EQUALS:
             difference = from_uint(0);
             break;
         
-        /* Если уменьшаемое больше вычетаемого */
+        /* Если уменьшаемое больше вычитаемого */
         case GREATER:
-            /* Реализация вычетания с заниманием "в столбик" */
+            /* Реализация вычитания с заниманием "в столбик" */
             for (int i = 0; i < SIZE; ++i) {
                 int full_diff = x.digits[i] - y.digits[i] - borrow;
                 if (full_diff >= 0) {
